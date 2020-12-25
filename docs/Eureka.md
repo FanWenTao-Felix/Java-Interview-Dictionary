@@ -2,7 +2,7 @@
 
 ## 1.**注册表存储结构**
 
-![](images\Eureka001.webp)
+![Eureka001](/images/Eureka001.webp)
 
 - 这个名字叫做**registry**的**CocurrentHashMap**，就是注册表的核心结构。
 - Eureka Server的注册表直接基于**纯内存**，即在内存里维护了一个数据结构。各个服务的注册、服务下线、服务故障，全部会在内存里维护和更新这个注册表。
