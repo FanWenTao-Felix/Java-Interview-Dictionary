@@ -3,7 +3,7 @@
 ## 1.核心组件
 
 - **Eureka**：各个服务启动时，Eureka Client都会将服务注册到Eureka Server，并且Eureka Client还可以反过来从Eureka Server拉取注册表，从而知道其他服务在哪里.
-  - **Eureka** **Client：**负责将这个服务的信息注册到Eureka Server中.
+  - **Eureka **Client：**负责将这个服务的信息注册到Eureka Server中.
   - **Eureka Server：**注册中心，里面有一个注册表，保存了各个服务所在的机器和端口号.
 - **Ribbon**：服务间发起请求的时候，基于Ribbon做负载均衡，从一个服务的多台机器中选择一台.
   - 作用是负载均衡，会帮你在每次请求时选择一台机器，均匀的把请求分发到各个机器上
