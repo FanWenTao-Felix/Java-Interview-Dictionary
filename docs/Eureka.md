@@ -77,7 +77,7 @@
 
 ## 6.**注册表存储结构**
 
-![](D:\workspace\Java-Interview-Dictionary\images\Eureka001.webp)
+![Eureka001](/images/Eureka001.webp)
 
 - 这个名字叫做**registry**的**CocurrentHashMap**，就是注册表的核心结构。
 - Eureka Server的注册表直接基于**纯内存**，即在内存里维护了一个数据结构。各个服务的注册、服务下线、服务故障，全部会在内存里维护和更新这个注册表。
@@ -89,23 +89,23 @@
 
 - 在拉取注册表的时候：
 
-- - 首先从**ReadOnlyCacheMap**里查缓存的注册表。
+  - 首先从**ReadOnlyCacheMap**里查缓存的注册表。
 
-- - 若没有，就找**ReadWriteCacheMap**里缓存的注册表。
+  - 若没有，就找**ReadWriteCacheMap**里缓存的注册表。
 
-- - 如果还没有，就从**内存中获取实际的注册表数据。**
+  - 如果还没有，就从**内存中获取实际的注册表数据。**
 
 - 在注册表发生变更的时候：
 
-- - 会在内存中更新变更的注册表数据，同时**过期掉ReadWriteCacheMap**。
+  - 会在内存中更新变更的注册表数据，同时**过期掉ReadWriteCacheMap**。
 
-- - 此过程不会影响ReadOnlyCacheMap提供人家查询注册表。
+  - 此过程不会影响ReadOnlyCacheMap提供人家查询注册表。
 
-- - 一段时间内（默认30秒），各服务拉取注册表会直接读ReadOnlyCacheMap
+  - 一段时间内（默认30秒），各服务拉取注册表会直接读ReadOnlyCacheMap
 
-- - 30秒过后，Eureka Server的后台线程发现ReadWriteCacheMap已经清空了，也会清空ReadOnlyCacheMap中的缓存
+  - 30秒过后，Eureka Server的后台线程发现ReadWriteCacheMap已经清空了，也会清空ReadOnlyCacheMap中的缓存
 
-- - 下次有服务拉取注册表，又会从内存中获取最新的数据了，同时填充各个缓存。
+  - 下次有服务拉取注册表，又会从内存中获取最新的数据了，同时填充各个缓存。
 
 ### **多级缓存机制的优点是什么？**
 
