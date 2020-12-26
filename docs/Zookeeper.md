@@ -91,3 +91,141 @@ ZAB协议，2PC，过半ack + 磁盘日志写，commit + 写内存数据结构�
 高可用，follower宕机没影响，leader宕机有数据不一致问题，新选举的leader会自动处理，正常运行，但是在恢复模式期间，可能有一小段时间是没法写入zk的。
 
 高并发，单机leader写，Observer可以线性扩展读QPS。
+
+## 7.ZooKeeper集群的三种角色：Leader、Follower、Observer
+
+![image.png](D:\workspace\Java-Interview-Dictionary\images\zookeeper001.png)
+
+通常来说ZooKeeper集群里有三种角色的机器.
+
+集群启动自动选举一个Leader出来，只有Leader是可以写的，Follower是只能同步数据和提供数据的读取，Leader挂了，Follower可以继续选举出来Leader，Observer也只能读但是Observer不参与选举.
+
+## 8.ZooKeeper的数据模型：znode和节点类型 ![image.png](D:\workspace\Java-Interview-Dictionary\images\zookeeper002.png)
+
+核心数据模型就是znode树，平时我们往zk写数据就是创建树形结构的znode，里面可以写入值，就这数据模型，都在zk内存里存放.
+
+有两种节点，持久节点和临时节点，持久节点就是哪怕客户端断开连接，一直存在.
+
+临时节点，就是只要客户端断开连接，节点就没了.
+
+还有顺序节点，就是创建节点的时候自增加全局递增的序号.加锁的时候，是创建一个临时顺序节点.
+
+zk会自动给你的临时节点加上一个后缀，全局递增的，编号.
+
+如果你客户端断开连接了，就自动销毁这个你加的锁，此时人家会感知到，就会尝试去加锁.
+
+如果你是做元数据存储，肯定是持久节点.
+
+如果你是做一些分布式协调和通知，很多时候是用临时节点，就是说，比如我创建一个临时节点，别人来监听这个节点的变化，如果我断开连接了，临时节点消失，此时人家会感知到，就会来做点别的事情.
+
+顺序节点，在分布式锁里用的比较经典.
+
+每个znode还有一个Stat用来存放数据版本，version（znode的版本），cversion（znode子节点的版本），aversion（znode的ACL权限控制版本）.
+
+## 9.ZooKeeper最核心的一个机制：Watcher监听回调
+
+ZooKeeper最核心的机制，就是你一个客户端可以对znode进行Watcher监听，然后znode改变的时候回调通知你的这个客户端，这个是非常有用的一个功能，在分布式系统的协调中是很有必要的.
+
+支持写和查：只能实现元数据存储，Master选举，部分功能.
+
+分布式系统的协调需求：分布式架构中的系统A监听一个数据的变化，如果分布式架构中的系统B更新了那个数据/节点，zk反过来通知系统A这个数据的变化.
+
+使用zk很简单，内存数据模型（不同节点类型）；写数据，主动读取数据；监听数据变化，更新数据，反向通知数据变化.
+
+ 实现分布式集群的集中式的元数据存储、分布式锁、Master选举、分布式协调监听.
+
+## 10.zk到底通过什么协议在集群间进行数据一致性同步？
+
+用的是特别设计的ZAB协议，ZooKeeper Atomic Broadcast，就是ZooKeeper原子广播协议.
+
+通过这个协议来进行zk集群间的数据同步，保证数据的强一致性.
+
+## 11.zk集群启动到数据同步再到崩溃恢复
+
+只有leader可以接受写请求，但是客户端可以随便连接leader或者follower，如果客户端连接到follower，follower会把写请求转发给leader.
+
+leader收到写请求，就把请求同步给所有的follower，过半follower都说收到了，就再发commit给所有的follower，让大家提交这个请求事务.
+
+如果突然leader宕机了，会进入恢复模式，重新选举一个leader，只要过半的机器都承认你是leader，就可以选举出来一个leader，所以zk很重要的一点是主要宕机的机器数量小于一半，他就可以正常工作.
+
+**只要有超过一半的机器，认可你是leader，你就可以被选举为leader**.
+
+新leader重新等待过半follower跟他同步，完了重新进入消息广播模式.
+
+集群启动：恢复模式，leader选举（过半机器选举机制） + 数据同步.
+
+消息写入：消息广播模式，leader采用2PC模式的过半写机制，给follower进行同步.
+
+崩溃恢复：恢复模式，leader/follower宕机，只要剩余机器超过一半，集群宕机不超过一半的机器，就可以选举新的leader，数据同步.
+
+## 12.采用了2PC两阶段提交思想的ZAB消息广播流程
+
+每一个消息广播的时候，都是2PC思想走的，先是发起事务Proposal的广播，就是事务提议，仅仅只是个提议而已，各个follower返回ack，过半follower都ack了，就直接发起commit消息到全部follower上去，让大家提交.
+
+发起一个事务proposal之前，leader会分配一个全局唯一递增的事务id，zxid，通过这个可以严格保证顺序.
+
+leader会为每个follower创建一个队列，里面放入要发送给follower的事务proposal，这是保证了一个同步的顺序性.
+
+每个follower收到一个事务proposal之后，就需要立即写入本地磁盘日志中，写入成功之后就可以保证数据不会丢失了，然后返回一个ack给leader，然后过半follower都返回了ack，leader推送commit消息给全部follower.
+
+leader自己也会进行commit操作.
+
+commit之后，就意味这个数据可以被读取到了.
+
+## 13.ZAB协议下一种可能存在的数据一致性问题
+
+Leader收到了过半的follower的ack，接着leader自己commit了，还没来得及发送commit给所有follower自己就挂了，这个时候相当于leader的数据跟所有follower是不一致的，你得保证全部follower最终都得commit.
+
+另外一个，leader可能会自己收到了一个请求，结果没来得及发送proposal给所有follower之前就宕机了，此时这个Leader上的请求应该是要被丢弃掉的. 
+
+所以在leader崩溃的时候，就会选举一个拥有事务id最大的机器作为leader，他得检查事务日志，如果发现自己磁盘日志里有一个proposal，但是还没提交，说明肯定是之前的leader没来得及发送commit就挂了.
+
+此时他就得作为leader为这个proposal发送commit到其他所有的follower中去，这个就保证了之前老leader提交的事务已经会最终同步提交到所有follower里去.
+
+然后对于第二种情况，如果老leader自己磁盘日志里有一个事务proposal，他启动之后跟新leader进行同步，发现这个事务proposal其实是不应该存在的，就直接丢弃掉就可以了.
+
+## 14.崩溃恢复时选举出来的Leader是如何跟其他Follower进行同步的？
+
+新选举出来一个leader之后，本身人家会挑选已经收到的事务zxid里最大的那个follower作为新的leader。
+
+其他的follower就会跟他进行同步，他给每个follower准备一个队列，然后把所有的proposal都发送给follower，只要过半follower都ack了，就会发送commit给那个follower.
+
+所谓的commit操作，就是把这条数据加入内存中的znode树形数据结构里去，然后就对外可以看到了，也会去通知一些监听这个znode的人.
+
+如果一个follower跟leader完全同步了，就会加入leader的同步follower列表中去，然后过半follower都同步完毕了，就可以对外继续提供服务了.
+
+## 15.对于需要丢弃的消息是如何在ZAB协议中进行处理的？
+
+每一条事务的zxid是64位的，高32位是leader的epoch，就认为是leader的版本吧；低32位才是自增长的zxid.
+
+如果一个leader自己刚把一个proposal写入本地磁盘日志，就宕机了，没来得及发送给全部的follower，此时新leader选举出来，他的epoch会自增长一位.
+
+然后老leader恢复了连接到集群是follower了，此时发现自己比新leader多出来一条proposal，但是自己的epoch比新leader的epoch低了，所以就会丢弃掉这条数据.
+
+启动的时候，过半机器选举leader，数据同步.
+
+对外提供服务的时候，2PC + 过半写机制，顺序一致性（最终的一致性）. 
+
+崩溃恢复，剩余机器过半，重新选举leader，有数据不一致的情况，针对两种情况自行进行处理，保证数据是一致的（磁盘日志文件、zxid的高32位）.
+
+## 16.ZooKeeper的Observer节点是用来干什么的？
+
+Observer节点是不参与leader选举的，他也不参与ZAB协议同步时候的过半follower ack的那个环节，他只是单纯的接收数据，同步数据，可能数据存在一定的不一致的问题，但是是只读的.
+
+leader在进行数据同步的时候，observer是不参与到过半写机制里去.
+
+zk集群无论多少台机器，只能是一个leader进行写，单机写入最多每秒上万QPS，这是没法扩展的，所以zk是适合写少的场景.
+
+但是读呢？follower起码有2个或者4个，读你起码可以有每秒几万QPS，没问题，那如果读请求更多呢？此时你可以引入Observer节点，他就只是同步数据，提供读服务，可以无限的扩展机器.
+
+## 17.ZooKeeper为什么只能是小集群部署？
+
+假设你有1个leader + 20个follower，21台机器，你觉得靠谱吗？不靠谱，因为follower要参与到ZAB的写请求过半ack里去.
+
+如果你有20个follower，一个写请求出去，要起码等待10台以上的Follower返回ack，才能发送commit，才能告诉你写请求成功了，性能是极差的.
+
+所以zk的这个ZAB协议就决定了一般其实就是1个leader + 2个follower的小集群就够了，写请求是无法扩展的，读请求如果量大，可以加observer机器，最终就是适合读多写少的场景.
+
+主要就是用于分布式系统的一些协调工作.
+
+18.
